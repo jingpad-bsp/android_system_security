@@ -638,10 +638,11 @@ Status KeyStoreService::addRngEntropy(
         return AIDL_RETURN(ErrorCode::HARDWARE_TYPE_UNAVAILABLE);
     }
 
+    ALOGD("start addRngEntropy");
     device->addRngEntropy(entropy, [device, cb](Return<ErrorCode> rc) {
         cb->onFinished(KeyStoreServiceReturnCode(KS_HANDLE_HIDL_ERROR(device, rc)));
     });
-
+    ALOGD("finish addRngEntropy");
     return AIDL_RETURN(ResponseCode::NO_ERROR);
 }
 
@@ -1041,6 +1042,7 @@ Status KeyStoreService::attestKey(
 
     auto dev = mKeyStore->getDevice(keyBlob);
     auto hidlKey = blob2hidlVec(keyBlob);
+    ALOGD("start attestKey");
     dev->attestKey(
         std::move(hidlKey), mutableParams.hidl_data(),
         [dev, cb](Return<void> rc,
@@ -1056,6 +1058,7 @@ Status KeyStoreService::attestKey(
                                KeymasterCertificateChain(std::move(certChain)));
             }
         });
+    ALOGD("finish attestKey");
 
     return AIDL_RETURN(ResponseCode::NO_ERROR);
 }
@@ -1354,12 +1357,23 @@ bool KeyStoreService::checkAllowedOperationParams(const hidl_vec<KeyParameter>& 
 }
 
 Status KeyStoreService::onKeyguardVisibilityChanged(bool isShowing, int32_t userId,
-                                                    int32_t* aidl_return) {
+                                                    int32_t* _aidl_return) {
     KEYSTORE_SERVICE_LOCK;
+    if (isShowing) {
+        if (!checkBinderPermission(P_LOCK, UID_SELF)) {
+            LOG(WARNING) << "onKeyguardVisibilityChanged called with isShowing == true but "
+                            "without LOCK permission";
+            return AIDL_RETURN(ResponseCode::PERMISSION_DENIED);
+        }
+    } else {
+        if (!checkBinderPermission(P_UNLOCK, UID_SELF)) {
+            LOG(WARNING) << "onKeyguardVisibilityChanged called with isShowing == false but "
+                            "without UNLOCK permission";
+            return AIDL_RETURN(ResponseCode::PERMISSION_DENIED);
+        }
+    }
     mKeyStore->getEnforcementPolicy().set_device_locked(isShowing, userId);
-    *aidl_return = static_cast<int32_t>(ResponseCode::NO_ERROR);
-
-    return Status::ok();
+    return AIDL_RETURN(ResponseCode::NO_ERROR);
 }
 
 }  // namespace keystore
